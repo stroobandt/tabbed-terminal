@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+
+
+VERSION='202206'
+
+
+# DESCRIPTION
+#
+#    This script provides terminal emulator multiplexing and focus
+#    for the xfce4-terminal or mate-terminal.
+
+
+# USAGE
+#
+#    $ tabbed-terminal [optional arguments]
+#
+#
+#    Preferred Applications
+#    ~~~~~~~~~~~~~~~~~~~~~~
+#    In Settings → Preferred Applications → Utilities → Terminal Emulator, put:
+#
+#        tabbed-terminal --command="%s" --title="%s"
+#
+#
+#    Launcher
+#    ~~~~~~~~
+#    In a Terminal Emulator launcher, just put:
+#
+#        tabbed-terminal
+#
+#    (The default is: exo-open --launch TerminalEmulator.)
+#
+#
+#    vim
+#    ~~~
+#    In .vimrc, put:
+#
+#        command! Terminal :call system("tabbed-terminal --working-directory='".expand("%:p:h")."' &")
+#        noremap  <silent> <F4> :Terminal<CR>
+#        vnoremap <silent> <F4> <ESC>:Terminal<CR>
+#        inoremap <silent> <F4> <ESC>:Terminal<CR>
+#
+#
+#    SpaceFM
+#    ~~~~~~~
+#    In SpaceFM → View → Preferences → Advanced → Terminal, put:
+#
+#        tabbed-terminal --title="%D"
+
+
+# REQUIRES
+#
+#    awk, pidof, wmctrl
+
+
+# COPYRIGHT
+#
+#    Copyright (C) 2015-2022  Serge Y. Stroobandt
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# CONTACT
+#
+#    xdg-open mailto:$(echo c2VyZ2VAc3Ryb29iYW5kdC5jb20K |base64 -d)
+
+
+# TODO
+#
+#    Some console programs should run in their own window:
+#    YFKTEST=$(wmctrl -lp |awk '{print$5}' |grep 'YFKtest')
+
+
+if [[ $DISPLAY ]]; then
+
+
+    # https://superuser.com/a/1461079/219226
+    TERMS=(xfce4-terminal mate-terminal)
+    for T in ${TERMS[*]}
+    do
+        if [ $(command -v $T) ]
+        then
+            TERMINAL=$(command -v $T)
+            break
+        fi
+    done
+
+
+    # Store the arguments for later use.
+    # Spaces in the arguments are to be expected.
+    # Hence, the internal field separator (IFS) is set to tab.
+    # https://stackoverflow.com/a/30439949/2192488
+    OLD_IFS="$IFS"
+    IFS=$'\t'
+    ARGUMENTS="$*"
+
+
+    # Check whether an terminal instance is already running.
+    TERM_PID=$(pidof $TERMINAL)    # Beware, pidof is not available in all GNU/Linux distributions!
+    echo $TERM_PID
+
+
+    # Determine the terminal instance title
+    # by processing the command line options
+    TITLE=''
+    WORKING_DIR=''
+
+    while [[ -n $1 ]]; do
+        case $1 in
+            --working-directory=*)
+                WORKING_DIR=`echo $1 |sed -e 's/^[^=]*=//g'`
+                ;;
+            --title=*)
+                TITLE=`echo $1 |sed -e 's/^[^=]*=//g'`
+                ;;
+            -T)
+                shift
+                TITLE=$1
+                ;;
+            *)
+                ;;
+        esac
+        shift
+    done
+
+
+    if [[ -z $TITLE ]]; then
+        TITLE=$WORKING_DIR
+    fi
+
+
+    if [[ -z $TITLE ]]; then
+        TITLE='~'
+    fi
+
+
+    # If another terminal instance is running, use --tab as the first option.
+    # Otherwise, open a new terminal window,
+    # which will be maximised if the file ~/.maximize exists.
+    # Note that repeating the same argument twice does not entail any negative consequences.
+    if [[ -n $TERM_PID ]]; then
+        $TERMINAL --tab --title=$TITLE $ARGUMENTS
+    elif [[ -f $HOME/.maximize ]]; then
+        $TERMINAL --maximize --title=$TITLE $ARGUMENTS
+    else
+        $TERMINAL --title=$TITLE $ARGUMENTS
+    fi
+
+
+    IFS="$OLD_IFS"
+
+
+    # Focus the last opened terminal window.
+    TERM_PID=$(pidof $TERMINAL)
+    TERM_WIN=$(wmctrl -lp |grep -E "^.+\b.+\b$TERM_PID\b" |tail -n1)    # window number
+
+    wmctrl -ia $TERM_WIN
+
+
+else
+    echo 'On this system, neither xfce4-terminal nor mate-terminal is available.'
+fi
